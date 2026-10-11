@@ -1,6 +1,6 @@
 # EVIDENCE (synthetic/fake data only)
 
-Generated 2026-10-12 00:38 (Asia/Shanghai, box clock)
+Generated 2026-10-12 00:40 (Asia/Shanghai, box clock)
 
 ## Column verification (docs fetched 2026-10-12 with WebFetch)
 
@@ -60,6 +60,12 @@ Status: **verified** = exact header listed in an official doc page fetched; **no
 
 Unofficial sources consulted (not fetched as docs, search snippets only): community.squareup.com threads m-p/749378, m-p/221778, m-p/764199; trestlefinance.com/guides/square-transactions-csv-quickbooks. Note: one third-party source shows Square `Time Zone` as IANA (e.g. `America/Detroit`), so the script accepts both styles.
 
+## CTA link check
+```
+$ curl -s -o /dev/null -w "%{http_code}" -L https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html
+200
+```
+
 ## pytest
 ```
 ============================= test session starts ==============================
@@ -67,23 +73,34 @@ platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python3
 cachedir: .pytest_cache
 rootdir: /workspace/shopify-square-true-profit
 plugins: anyio-4.15.1
-collecting ... collected 13 items
+collecting ... collected 17 items
 
-tests/test_true_profit.py::test_money_parsing PASSED                     [  7%]
-tests/test_true_profit.py::test_shopify_with_payments_file PASSED        [ 15%]
-tests/test_true_profit.py::test_shopify_estimated_fees_with_transaction_history PASSED [ 23%]
-tests/test_true_profit.py::test_shopify_fallback_order_date_refunds_warns PASSED [ 30%]
-tests/test_true_profit.py::test_cross_day_refund_shopify PASSED          [ 38%]
-tests/test_true_profit.py::test_cross_day_refund_square PASSED           [ 46%]
-tests/test_true_profit.py::test_square PASSED                            [ 53%]
-tests/test_true_profit.py::test_total PASSED                             [ 61%]
-tests/test_true_profit.py::test_discrepancies PASSED                     [ 69%]
-tests/test_true_profit.py::test_square_iana_timezone_label PASSED        [ 76%]
-tests/test_true_profit.py::test_lineitem_sku_header_case_insensitive PASSED [ 84%]
-tests/test_true_profit.py::test_missing_cost_warns PASSED                [ 92%]
-tests/test_true_profit.py::test_render_has_cta PASSED                    [100%]
+tests/test_true_profit.py::test_money_parsing PASSED                     [  5%]
+tests/test_true_profit.py::test_shopify_with_payments_file PASSED        [ 11%]
+tests/test_true_profit.py::test_shopify_estimated_fees_with_transaction_history PASSED [ 17%]
+tests/test_true_profit.py::test_shopify_fallback_order_date_refunds_warns PASSED [ 23%]
+tests/test_true_profit.py::test_cross_day_refund_shopify PASSED          [ 29%]
+tests/test_true_profit.py::test_cross_day_refund_square PASSED           [ 35%]
+tests/test_true_profit.py::test_square PASSED                            [ 41%]
+tests/test_true_profit.py::test_total PASSED                             [ 47%]
+tests/test_true_profit.py::test_discrepancies PASSED                     [ 52%]
+tests/test_true_profit.py::test_square_iana_timezone_label PASSED        [ 58%]
+tests/test_true_profit.py::test_lineitem_sku_header_case_insensitive PASSED [ 64%]
+tests/test_true_profit.py::test_missing_cost_warns PASSED                [ 70%]
+tests/test_true_profit.py::test_render_has_cta PASSED                    [ 76%]
+tests/test_true_profit.py::test_square_missing_column_fails_clearly PASSED [ 82%]
+tests/test_true_profit.py::test_square_renamed_column_reports_unknown_header PASSED [ 88%]
+tests/test_true_profit.py::test_square_items_missing_qty_fails PASSED    [ 94%]
+tests/test_true_profit.py::test_cli_exit_code_2_on_bad_square PASSED     [100%]
 
-============================== 13 passed in 0.05s ==============================
+============================== 17 passed in 0.05s ==============================
+```
+
+## Square beta: bad header demo (Net Total renamed to Net Amount)
+```
+$ python3 scripts/true_profit.py --date 2026-10-11 --tz America/New_York --square-transactions /tmp/bad_sq.csv
+ERROR: Square transactions CSV '/tmp/bad_sq.csv' is missing required column(s): Net Total. Unrecognized header(s) in file: Gift Card Sales, Source, Card, Card Entry Methods, Cash, Square Gift Card, Other Tender, Other Tender Type, Net Amount, Payment ID, Card Brand, PAN Suffix, Device Name, Staff Name, Description, Location. Square support is beta; please open an issue with a redacted sample export header row.
+exit code: 2
 ```
 
 ## Sample run 2026-10-11
@@ -116,7 +133,7 @@ $ python3 scripts/true_profit.py --tz America/New_York --shopify-orders examples
 | square | FAKETXN2 | 16.02 | 15.92 | -0.10 | FLAG |
 
 ---
-Want this delivered to your inbox every morning? Profit daily report done-for-you service by Toolstack Lab: email jeking.hwang2025@gmail.com (sample report: https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html)
+Want this delivered every morning? See Toolstack Lab's profit daily report done-for-you service: https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html
 ```
 
 ## Sample run 2026-10-12
@@ -149,6 +166,6 @@ $ python3 scripts/true_profit.py --tz America/New_York --shopify-orders examples
 - shopify: order #1002 missing from payments file; fee estimated
 
 ---
-Want this delivered to your inbox every morning? Profit daily report done-for-you service by Toolstack Lab: email jeking.hwang2025@gmail.com (sample report: https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html)
+Want this delivered every morning? See Toolstack Lab's profit daily report done-for-you service: https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html
 ```
 

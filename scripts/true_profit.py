@@ -15,9 +15,9 @@ from zoneinfo import ZoneInfo
 CENT = Decimal("0.01")
 ZERO = Decimal("0")
 TOLERANCE = Decimal("0.01")
-CTA = ("Want this delivered to your inbox every morning? Profit daily report done-for-you service by "
-       "Toolstack Lab: email jeking.hwang2025@gmail.com (sample report: "
-       "https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html)")
+CTA_URL = "https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html"
+CTA = ("Want this delivered every morning? See Toolstack Lab's profit daily report done-for-you service: "
+       + CTA_URL)
 
 # Square exports label zones with Rails-style names; map the common US ones.
 SQUARE_TZ = {
@@ -175,7 +175,32 @@ def shopify(orders_csv, payments_csv, tx_history_csv, costs, day, tz, warnings, 
     return s
 
 
-# ---------------- Square ----------------
+# ---------------- Square (BETA) ----------------
+SQ_TX_REQUIRED = ["Date", "Time", "Gross Sales", "Discounts", "Net Sales", "Tax", "Tip", "Partial Refunds",
+                  "Total Collected", "Fees", "Net Total", "Transaction ID"]
+SQ_TX_OPTIONAL = ["Time Zone", "Service Charges", "Event Type"]
+SQ_ITEMS_REQUIRED = ["Date", "Time", "Item", "Qty", "Gross Sales", "Transaction ID"]
+SQ_ITEMS_OPTIONAL = ["Time Zone", "SKU"]
+SQ_ISSUES = "Square support is beta; please open an issue with a redacted sample export header row."
+
+
+class SquareFormatError(ValueError):
+    pass
+
+
+def check_square_headers(path, required, optional, label):
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        headers = [h.strip() for h in (next(csv.reader(f), []))]
+    missing = [c for c in required if c not in headers]
+    if missing:
+        known = set(required) | set(optional)
+        unknown = [h for h in headers if h and h not in known]
+        raise SquareFormatError(
+            f"{label} CSV {path!r} is missing required column(s): {', '.join(missing)}. "
+            f"Unrecognized header(s) in file: {', '.join(unknown) or '(none)'}. {SQ_ISSUES}")
+
+
+
 def sq_dt(r, default_tz):
     label = r.get("Time Zone", "").strip()
     tzname = SQUARE_TZ.get(label)
@@ -189,6 +214,9 @@ def sq_dt(r, default_tz):
 
 
 def square(tx_csv, items_csv, costs, day, tz, warnings, discrepancies):
+    check_square_headers(tx_csv, SQ_TX_REQUIRED, SQ_TX_OPTIONAL, "Square transactions")
+    if items_csv:
+        check_square_headers(items_csv, SQ_ITEMS_REQUIRED, SQ_ITEMS_OPTIONAL, "Square item details")
     s = blank()
     txids, gross_tx = set(), ZERO
     for r in read_csv(tx_csv):
@@ -288,8 +316,12 @@ def main(argv=None):
     ap.add_argument("--costs"); ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     day = date.fromisoformat(a.date) if a.date else (datetime.now(ZoneInfo(a.tz)).date() - timedelta(days=1))
-    rep = run(day, a.tz, a.shopify_orders, a.shopify_payments, a.square_transactions, a.square_items, a.costs,
+    try:
+        rep = run(day, a.tz, a.shopify_orders, a.shopify_payments, a.square_transactions, a.square_items, a.costs,
               a.shopify_transactions)
+    except SquareFormatError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
     if a.json:
         print(json.dumps(rep, default=str, indent=2))
     else:

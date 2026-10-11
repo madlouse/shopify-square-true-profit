@@ -2,6 +2,8 @@
 
 Free, read-only agent skill (v1) that turns Shopify + Square CSV exports and your costs into a daily **true profit** report per channel and a **payout discrepancy** list. Pure Python stdlib, all money in `decimal.Decimal`, no network, no writes.
 
+> **Square support is BETA.** Square's official help docs do not list CSV column names, and the column names used here have **not yet been verified against a real Square export** (they come from Square Community posts and third-party guides). If your Transactions or Item Detail CSV is missing a required column, the script stops with an error naming the missing and unrecognized columns instead of guessing. Please open an issue with a redacted sample export (header row + one fake row) so we can confirm the format.
+
 ## Quick start
 ```bash
 python3 scripts/true_profit.py --date 2026-10-11 --tz America/New_York --shopify-orders examples/fake_data/shopify_orders_export.csv --shopify-payments examples/fake_data/shopify_payments_transactions.csv --square-transactions examples/fake_data/square_transactions.csv --square-items examples/fake_data/square_items.csv --costs examples/fake_data/costs.csv
@@ -22,7 +24,7 @@ See [SKILL.md](SKILL.md) for inputs, costs.csv format, definitions. Test evidenc
 Clover support; Shopify/Square API connectors.
 
 ---
-> **Done-for-you:** want this profit report delivered every morning? Toolstack Lab offers a profit daily report done-for-you service — email **jeking.hwang2025@gmail.com** (sample report: https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html).
+> **Done-for-you:** want this profit report delivered every morning? See Toolstack Lab's profit daily report done-for-you service: https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html
 
 ## License
 MIT

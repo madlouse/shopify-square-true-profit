@@ -127,4 +127,53 @@ def test_missing_cost_warns():
 
 def test_render_has_cta():
     out = tp.render(full())
-    assert "jeking.hwang2025@gmail.com" in out and "PLACEHOLDER" not in out
+    assert "https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html" in out
+    assert "@" not in out.split("---")[-1] and "PLACEHOLDER" not in out
+
+
+import csv as _csv
+import pytest
+
+
+def _write_without(tmp_path, src, drop, rename=None):
+    rows = list(_csv.reader(open(p(src), newline="")))
+    hdr = rows[0]
+    keep = [i for i, h in enumerate(hdr) if h != drop]
+    out = tmp_path / src
+    with open(out, "w", newline="") as f:
+        w = _csv.writer(f)
+        for r in rows:
+            r2 = [r[i] for i in keep]
+            if r is hdr and rename:
+                r2 = [rename.get(h, h) for h in r2]
+            w.writerow(r2)
+    return str(out)
+
+
+def test_square_missing_column_fails_clearly(tmp_path):
+    bad = _write_without(tmp_path, "square_transactions.csv", "Fees")
+    with pytest.raises(tp.SquareFormatError) as e:
+        tp.run(date(2026, 10, 11), "America/New_York", square_tx=bad, costs=p("costs.csv"))
+    assert "missing required column(s): Fees" in str(e.value)
+    assert "Unrecognized header(s) in file: " in str(e.value)
+
+
+def test_square_renamed_column_reports_unknown_header(tmp_path):
+    bad = _write_without(tmp_path, "square_transactions.csv", "__none__", rename={"Net Total": "Net Amount"})
+    with pytest.raises(tp.SquareFormatError) as e:
+        tp.run(date(2026, 10, 11), "America/New_York", square_tx=bad, costs=p("costs.csv"))
+    msg = str(e.value)
+    assert "missing required column(s): Net Total" in msg and "Net Amount" in msg
+
+
+def test_square_items_missing_qty_fails(tmp_path):
+    bad = _write_without(tmp_path, "square_items.csv", "Qty")
+    with pytest.raises(tp.SquareFormatError, match="Square item details .*missing required column\\(s\\): Qty"):
+        tp.run(date(2026, 10, 11), "America/New_York", square_tx=p("square_transactions.csv"),
+               square_items=bad, costs=p("costs.csv"))
+
+
+def test_cli_exit_code_2_on_bad_square(tmp_path, capsys):
+    bad = _write_without(tmp_path, "square_transactions.csv", "Transaction ID")
+    rc = tp.main(["--date", "2026-10-11", "--tz", "America/New_York", "--square-transactions", bad])
+    assert rc == 2 and "Transaction ID" in capsys.readouterr().err
