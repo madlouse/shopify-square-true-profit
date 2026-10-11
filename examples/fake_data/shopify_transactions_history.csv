@@ -1,0 +1,6 @@
+Order,Name,Payment Method,Kind,Gateway,Created At,Status,Amount,Currency,Card Type
+9000000001,#1001,Shopify Payments,sale,shopify_payments,2026-10-11 10:00:05 -0400,success,53.60,USD,visa
+9000000004,#1004,Shopify Payments,sale,shopify_payments,2026-10-11 12:00:05 -0400,success,40.00,USD,visa
+9000000003,#1003,Shopify Payments,sale,shopify_payments,2026-10-11 15:00:05 -0400,success,30.00,USD,mastercard
+9000000003,#1003,Shopify Payments,refund,shopify_payments,2026-10-11 18:00:00 -0400,success,10.00,USD,mastercard
+9000000004,#1004,Shopify Payments,refund,shopify_payments,2026-10-12 09:00:00 -0400,success,15.00,USD,visa

@@ -15,8 +15,9 @@ from zoneinfo import ZoneInfo
 CENT = Decimal("0.01")
 ZERO = Decimal("0")
 TOLERANCE = Decimal("0.01")
-CTA = ("Want this delivered to your inbox every morning? Profit daily report done-for-you service "
-       "[PLACEHOLDER LINK]: https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html")
+CTA = ("Want this delivered to your inbox every morning? Profit daily report done-for-you service by "
+       "Toolstack Lab: email jeking.hwang2025@gmail.com (sample report: "
+       "https://madlouse.github.io/toolstack-lab/tools/sample-profit-report.html)")
 
 # Square exports label zones with Rails-style names; map the common US ones.
 SQUARE_TZ = {
@@ -91,73 +92,99 @@ def blank():
 
 
 # ---------------- Shopify ----------------
-def shopify(orders_csv, payments_csv, costs, day, tz, warnings, discrepancies):
-    rows = read_csv(orders_csv)
+def col(row, *names):
+    """Case-insensitive header lookup (doc says 'Lineitem SKU'; some exports write 'Lineitem sku')."""
+    low = {k.strip().lower(): v for k, v in row.items() if k}
+    for n in names:
+        if n.lower() in low:
+            return (low[n.lower()] or "").strip()
+    return ""
+
+
+def sh_dt(text, tz):
+    return datetime.strptime(text.strip(), "%Y-%m-%d %H:%M:%S %z").astimezone(tz)
+
+
+def shopify(orders_csv, payments_csv, tx_history_csv, costs, day, tz, warnings, discrepancies):
+    """Sales/discounts/COGS on order 'Created at' date; refunds and actual fees on the date of the
+    refund/fee transaction (Shopify Payments 'Transaction Date' or transaction-history 'Created At')."""
     orders = {}
-    for r in rows:
-        name = r["Name"].strip()
-        o = orders.setdefault(name, {"lines": [], "head": None})
-        if r.get("Financial Status", "").strip():
+    for r in read_csv(orders_csv):
+        o = orders.setdefault(col(r, "Name"), {"lines": [], "head": None})
+        if col(r, "Financial Status"):
             o["head"] = r
         o["lines"].append(r)
-    pay = defaultdict(lambda: {"charge": ZERO, "fee": ZERO, "net": ZERO, "refund_net": ZERO})
-    have_pay = bool(payments_csv)
-    if have_pay:
-        for p in read_csv(payments_csv):
-            d = pay[p["Order"].strip()]
-            t = p["Type"].strip().lower()
-            if t == "charge":
-                d["charge"] += money(p["Amount"]); d["fee"] += money(p["Fee"]); d["net"] += money(p["Net"])
-            elif t == "refund":
-                d["refund_net"] += money(p["Net"]); d["fee"] += money(p["Fee"])
     s = blank()
+    pay_rows = read_csv(payments_csv) if payments_csv else []
+    pay_orders = {col(p, "Order") for p in pay_rows if col(p, "Type").lower() == "charge"}
+    day_totals = {}
     for name, o in orders.items():
         h = o["head"]
         if h is None:
             warnings.append(f"shopify: order {name} has no header row; skipped"); continue
-        created = datetime.strptime(h["Created at"].strip(), "%Y-%m-%d %H:%M:%S %z").astimezone(tz)
-        if created.date() != day or h["Financial Status"].strip().lower() in ("voided", "pending"):
+        if sh_dt(col(h, "Created at"), tz).date() != day or col(h, "Financial Status").lower() in ("voided", "pending"):
             continue
         s["orders"] += 1
-        items = sum((money(l["Lineitem price"]) * Decimal(l["Lineitem quantity"]) for l in o["lines"]), ZERO)
-        shipping = money(h["Shipping"])
-        total, refunded, disc = money(h["Total"]), money(h["Refunded Amount"]), money(h["Discount Amount"])
-        s["revenue"] += items + shipping
-        s["discounts"] += disc
-        s["refunds"] += refunded
-        s["tax_collected_excluded"] += money(h["Taxes"])
+        items = sum((money(col(l, "Lineitem price")) * Decimal(col(l, "Lineitem quantity")) for l in o["lines"]), ZERO)
+        total = money(col(h, "Total"))
+        day_totals[name] = total
+        s["revenue"] += items + money(col(h, "Shipping"))
+        s["discounts"] += money(col(h, "Discount Amount"))
+        s["tax_collected_excluded"] += money(col(h, "Taxes"))
         for l in o["lines"]:
-            s["cogs"] += unit_cost(costs, l["Lineitem sku"].strip(), l["Lineitem name"].strip(),
-                                   warnings, "shopify") * Decimal(l["Lineitem quantity"])
+            s["cogs"] += unit_cost(costs, col(l, "Lineitem SKU"), col(l, "Lineitem name"), warnings, "shopify") \
+                * Decimal(col(l, "Lineitem quantity"))
         s["shipping_cost"] += costs["shipping_cost"].get("shopify", ZERO)
-        expected_fee = est_fee(costs, "shopify", total)
-        if have_pay and name in pay:
-            fee = pay[name]["fee"]
-            reported = pay[name]["net"] + pay[name]["refund_net"]
-            exp_fee = expected_fee if expected_fee is not None else fee
-            expected = total - refunded - exp_fee
-            diff = reported - expected
-            discrepancies.append({"channel": "shopify", "ref": name, "expected_net": q(expected),
-                                  "reported_net": q(reported), "diff": q(diff),
-                                  "flag": abs(diff) >= TOLERANCE})
-            if pay[name]["charge"] != total:
-                discrepancies.append({"channel": "shopify", "ref": name + " (charge amount)",
-                                      "expected_net": q(total), "reported_net": q(pay[name]["charge"]),
-                                      "diff": q(pay[name]["charge"] - total), "flag": True})
-        else:
-            if have_pay:
-                warnings.append(f"shopify: order {name} missing from payments file")
-            fee = expected_fee if expected_fee is not None else ZERO
-            if expected_fee is None:
-                warnings.append("shopify: no payments file and no fee_pct override; fees counted as 0")
-        s["processing_fees"] += fee
+        if not payments_csv or name not in pay_orders:
+            if payments_csv:
+                warnings.append(f"shopify: order {name} missing from payments file; fee estimated")
+            fee = est_fee(costs, "shopify", total)
+            if fee is None:
+                warnings.append("shopify: no payments file and no fee_pct override; fees counted as 0"); fee = ZERO
+            s["processing_fees"] += fee
+        if not payments_csv and not tx_history_csv:
+            # fallback only: the orders export has no refund date column
+            refunded = money(col(h, "Refunded Amount"))
+            if refunded:
+                s["refunds"] += refunded
+                warnings.append("shopify: no payments/transaction-history file; refunds counted on ORDER date "
+                                "(supply one of them for refund-date accounting)")
+    if payments_csv:
+        for p in pay_rows:
+            if sh_dt(col(p, "Transaction Date"), tz).date() != day:
+                continue
+            t, ref = col(p, "Type").lower(), col(p, "Order")
+            amount, fee, net = money(col(p, "Amount")), money(col(p, "Fee")), money(col(p, "Net"))
+            s["processing_fees"] += fee
+            if t == "refund":
+                s["refunds"] += -amount
+            exp_fee = est_fee(costs, "shopify", amount) if t == "charge" else None
+            expected = amount - (exp_fee if exp_fee is not None else fee)
+            diff = net - expected
+            discrepancies.append({"channel": "shopify", "ref": f"{ref} {t}", "expected_net": q(expected),
+                                  "reported_net": q(net), "diff": q(diff), "flag": abs(diff) >= TOLERANCE})
+            if t == "charge" and ref in day_totals and day_totals[ref] != amount:
+                discrepancies.append({"channel": "shopify", "ref": f"{ref} charge vs order Total",
+                                      "expected_net": q(day_totals[ref]), "reported_net": q(amount),
+                                      "diff": q(amount - day_totals[ref]), "flag": True})
+    elif tx_history_csv:
+        for r in read_csv(tx_history_csv):
+            if col(r, "Kind").lower() == "refund" and col(r, "Status").lower() == "success" \
+                    and sh_dt(col(r, "Created At"), tz).date() == day:
+                s["refunds"] += abs(money(col(r, "Amount")))
     return s
 
 
 # ---------------- Square ----------------
 def sq_dt(r, default_tz):
-    tzname = SQUARE_TZ.get(r.get("Time Zone", "").strip())
-    src = ZoneInfo(tzname) if tzname else default_tz
+    label = r.get("Time Zone", "").strip()
+    tzname = SQUARE_TZ.get(label)
+    if not tzname and "/" in label:  # some exports use IANA names, e.g. America/Detroit
+        tzname = label
+    try:
+        src = ZoneInfo(tzname) if tzname else default_tz
+    except Exception:
+        src = default_tz
     return datetime.strptime(f'{r["Date"].strip()} {r["Time"].strip()}', "%Y-%m-%d %H:%M:%S").replace(tzinfo=src)
 
 
@@ -167,19 +194,24 @@ def square(tx_csv, items_csv, costs, day, tz, warnings, discrepancies):
     for r in read_csv(tx_csv):
         if sq_dt(r, tz).astimezone(tz).date() != day:
             continue
-        s["orders"] += 1
         txids.add(r["Transaction ID"].strip())
         gross = money(r["Gross Sales"]); gross_tx += gross
-        s["revenue"] += gross + money(r.get("Service Charges"))
-        s["discounts"] += -money(r["Discounts"])
-        s["refunds"] += -money(r["Partial Refunds"])
+        if (r.get("Event Type") or "Payment").strip().lower() == "refund":
+            # refund rows are dated on the refund date and carry negative amounts
+            s["refunds"] += -money(r["Net Sales"]) - money(r["Partial Refunds"])
+        else:
+            s["orders"] += 1
+            s["revenue"] += gross + money(r.get("Service Charges"))
+            s["discounts"] += -money(r["Discounts"])
+            s["refunds"] += -money(r["Partial Refunds"])
         fees = -money(r["Fees"])
         s["processing_fees"] += fees
         s["tax_collected_excluded"] += money(r["Tax"])
         s["tips_excluded"] += money(r["Tip"])
         collected = money(r["Total Collected"])
         reported = money(r["Net Total"])
-        exp_fee = est_fee(costs, "square", collected)
+        is_refund = (r.get("Event Type") or "").strip().lower() == "refund"
+        exp_fee = None if is_refund else est_fee(costs, "square", collected)
         expected = collected - (exp_fee if exp_fee is not None else fees)
         diff = reported - expected
         discrepancies.append({"channel": "square", "ref": r["Transaction ID"].strip(),
@@ -188,12 +220,12 @@ def square(tx_csv, items_csv, costs, day, tz, warnings, discrepancies):
     gross_items = ZERO
     if items_csv:
         for r in read_csv(items_csv):
-            if r["Transaction ID"].strip() not in txids:
+            if r["Transaction ID"].strip() not in txids or sq_dt(r, tz).astimezone(tz).date() != day:
                 continue
             gross_items += money(r["Gross Sales"])
             s["cogs"] += unit_cost(costs, r.get("SKU", "").strip(), r["Item"].strip(), warnings, "square") \
                 * Decimal(r["Qty"].strip() or "0")
-        if gross_items != gross_tx:
+        if gross_items != gross_tx:  # compares signed gross incl. refund rows
             discrepancies.append({"channel": "square", "ref": "items vs transactions gross sales",
                                   "expected_net": q(gross_tx), "reported_net": q(gross_items),
                                   "diff": q(gross_items - gross_tx), "flag": True})
@@ -208,12 +240,13 @@ def finish(s):
     return {k: (q(v) if isinstance(v, Decimal) else v) for k, v in s.items()}
 
 
-def run(day, tzname, shopify_orders=None, shopify_payments=None, square_tx=None, square_items=None, costs=None):
+def run(day, tzname, shopify_orders=None, shopify_payments=None, square_tx=None, square_items=None, costs=None,
+        shopify_transactions=None):
     tz = ZoneInfo(tzname)
     c = load_costs(costs)
     warnings, disc, channels = [], [], {}
     if shopify_orders:
-        channels["shopify"] = finish(shopify(shopify_orders, shopify_payments, c, day, tz, warnings, disc))
+        channels["shopify"] = finish(shopify(shopify_orders, shopify_payments, shopify_transactions, c, day, tz, warnings, disc))
     if square_tx:
         channels["square"] = finish(square(square_tx, square_items, c, day, tz, warnings, disc))
     total = blank()
@@ -250,11 +283,13 @@ def main(argv=None):
     ap.add_argument("--date", help="YYYY-MM-DD in merchant timezone (default: yesterday)")
     ap.add_argument("--tz", required=True, help="merchant IANA timezone, e.g. America/New_York")
     ap.add_argument("--shopify-orders"); ap.add_argument("--shopify-payments")
+    ap.add_argument("--shopify-transactions", help="Orders > Export transaction histories CSV (refund dates)")
     ap.add_argument("--square-transactions"); ap.add_argument("--square-items")
     ap.add_argument("--costs"); ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     day = date.fromisoformat(a.date) if a.date else (datetime.now(ZoneInfo(a.tz)).date() - timedelta(days=1))
-    rep = run(day, a.tz, a.shopify_orders, a.shopify_payments, a.square_transactions, a.square_items, a.costs)
+    rep = run(day, a.tz, a.shopify_orders, a.shopify_payments, a.square_transactions, a.square_items, a.costs,
+              a.shopify_transactions)
     if a.json:
         print(json.dumps(rep, default=str, indent=2))
     else:

@@ -1,4 +1,6 @@
-Transaction Date,Type,Order,Card Brand,Card Source,Payout Status,Payout Date,Payout ID,Available On,Amount,Fee,Net,Checkout,Payment Method Name,Presentment Amount,Presentment Currency,Currency
-2026-10-11 10:00:05 -0400,charge,#1001,visa,online,pending,,,2026-10-13,53.60,2.00,51.60,,card,53.60,USD,USD
-2026-10-11 15:00:05 -0400,charge,#1003,mastercard,online,pending,,,2026-10-13,30.00,1.17,28.83,,card,30.00,USD,USD
-2026-10-11 18:00:00 -0400,refund,#1003,mastercard,online,pending,,,2026-10-13,-10.00,0.00,-10.00,,card,-10.00,USD,USD
+Transaction Date,Type,Order,Card Brand,Card Source,Payout Status,Payout Date,Available On,Amount,Fee,Net
+2026-10-11 10:00:05 -0400,charge,#1001,visa,online,pending,2026-10-13,2026-10-13,53.60,2.00,51.60
+2026-10-11 12:00:05 -0400,charge,#1004,visa,online,pending,2026-10-13,2026-10-13,40.00,1.46,38.54
+2026-10-11 15:00:05 -0400,charge,#1003,mastercard,online,pending,2026-10-13,2026-10-13,30.00,1.17,28.83
+2026-10-11 18:00:00 -0400,refund,#1003,mastercard,online,pending,2026-10-13,2026-10-13,-10.00,0.00,-10.00
+2026-10-12 09:00:00 -0400,refund,#1004,visa,online,pending,2026-10-14,2026-10-14,-15.00,0.00,-15.00
