@@ -1,0 +1,11 @@
+kind,key,value,note
+cogs,TSHIRT,8.00,FAKE unit cost
+cogs,MUG,3.50,FAKE unit cost
+cogs,CF-01,0.75,FAKE unit cost
+cogs,FAKE Cookie,1.00,FAKE unit cost matched by item name (no SKU)
+cogs,BN-01,9.00,FAKE unit cost
+fee_pct,shopify,2.9,percent of order Total (estimate when no payments file)
+fee_fixed,shopify,0.30,per order
+fee_pct,square,2.6,percent of Total Collected (expected fee)
+fee_fixed,square,0.15,per payment
+shipping_cost,shopify,4.00,label cost per order (FAKE)
